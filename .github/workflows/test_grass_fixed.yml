@@ -1,4 +1,4 @@
-name: Grass Fixed (No Docker) v4
+name: Grass Fixed v5 (Selector Update)
 
 on:
   workflow_dispatch: # Manual Start
@@ -7,24 +7,21 @@ jobs:
   grass-node:
     name: Grass-Worker-1
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 Hours Max
+    timeout-minutes: 360 # 6 Hours
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4 # Updated to v4
+      uses: actions/checkout@v4
 
-    # 1. SETUP NODE.JS
     - name: Setup Node.js
-      uses: actions/setup-node@v4 # Updated to v4
+      uses: actions/setup-node@v4
       with:
         node-version: 18
 
-    # 2. INSTALL BROWSER TOOLS
     - name: Install Dependencies
       run: |
         npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-    # 3. CREATE BOT SCRIPT (On the Fly)
     - name: Create Grass Bot Script
       run: |
         cat <<EOF > grass_bot.js
@@ -34,7 +31,6 @@ jobs:
 
         (async () => {
           console.log("Launching Browser...");
-          // Browser launch options
           const browser = await puppeteer.launch({
             headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--ignore-certificate-errors']
@@ -45,29 +41,40 @@ jobs:
           // 1. Go to Login
           console.log("Going to Grass Login...");
           try {
-            await page.goto('https://app.getgrass.io/login', {waitUntil: 'networkidle2', timeout: 60000});
+            // Timeout barha diya hai
+            await page.goto('https://app.getgrass.io/login', {waitUntil: 'networkidle2', timeout: 90000});
           } catch (e) {
             console.log("Page load error (might be okay): " + e);
           }
           
-          // 2. Type Credentials
+          // 2. Type Credentials (UPDATED SELECTORS)
           console.log("Typing Credentials...");
-          await page.waitForSelector('input[name="user"]', {timeout: 10000}).catch(() => console.log("Input not found"));
-          await page.type('input[name="user"]', process.env.GRASS_USER);
-          await page.type('input[name="password"]', process.env.GRASS_PASS);
+          
+          try {
+            // Pehle purana selector try karega
+            await page.waitForSelector('input[name="user"]', {timeout: 5000});
+            await page.type('input[name="user"]', process.env.GRASS_USER);
+            await page.type('input[name="password"]', process.env.GRASS_PASS);
+          } catch (e) {
+            console.log("Standard selector failed, trying placeholder method...");
+            // Agar fail hua, to Placeholder text dhoond kar type karega
+            await page.waitForSelector('input[placeholder="Username or Email"]', {timeout: 5000});
+            await page.type('input[placeholder="Username or Email"]', process.env.GRASS_USER);
+            await page.type('input[type="password"]', process.env.GRASS_PASS);
+          }
           
           // 3. Click Login
           console.log("Clicking Login...");
-          await page.click('button[type="submit"]');
+          await page.keyboard.press('Enter'); // Enter dabana ziada reliable hai button click se
           
           // 4. Wait for Dashboard
           console.log("Waiting for dashboard...");
-          await new Promise(r => setTimeout(r, 10000)); // Wait 10 seconds
+          await new Promise(r => setTimeout(r, 15000)); // Wait 15 seconds
 
           // 5. Take Screenshot (Evidence)
           console.log("Taking Screenshot...");
           await page.screenshot({path: 'grass_status.png'});
-          console.log("Screenshot saved. Keeping session alive for 6 Hours...");
+          console.log("Screenshot saved. Keeping session alive...");
 
           // 6. Keep Alive Loop (6 Hours)
           await new Promise(r => setTimeout(r, 21000000));
@@ -76,17 +83,15 @@ jobs:
         })();
         EOF
 
-    # 4. RUN THE BOT
     - name: Run Grass
       env:
         GRASS_USER: ${{ secrets.GRASS_USER }}
         GRASS_PASS: ${{ secrets.GRASS_PASS }}
       run: node grass_bot.js
 
-    # 5. UPLOAD SCREENSHOT (Fixed v4 Here)
     - name: Upload Screenshot Evidence
-      if: always() # Hamesha chalega chahe error aye
-      uses: actions/upload-artifact@v4 # YE CHANGE KIYA HAI (v3 -> v4)
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
         name: grass-evidence
         path: grass_status.png
