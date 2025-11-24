@@ -1,0 +1,39 @@
+name: Grass Single Test
+
+on:
+  workflow_dispatch: # Manual Start Button
+
+jobs:
+  grass-node:
+    name: Grass-Runner-1
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # 6 Hours Max
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # --- START GRASS MINER (DOCKER) ---
+    - name: Start Grass Node
+      run: |
+        echo "Starting Grass Miner..."
+        # Ye Docker container Grass server se connect karega
+        docker run -d --name grass \
+          -e GRASS_USER="${{ secrets.GRASS_USER }}" \
+          -e GRASS_PASS="${{ secrets.GRASS_PASS }}" \
+          mrcolorrain/grass-miner
+
+    # --- VERIFICATION (LOGS CHECK) ---
+    - name: Check Logs (Wait 30s)
+      run: |
+        echo "Waiting for connection..."
+        sleep 30
+        # Ye logs dikhayega taake pata chale connect hua ya nahi
+        docker logs grass
+
+    # --- KEEP ALIVE (6 HOURS) ---
+    - name: Keep Alive
+      run: |
+        echo "Grass Node is running. Do not close."
+        # 21500 seconds = 5 Hours 58 Mins
+        sleep 21500
