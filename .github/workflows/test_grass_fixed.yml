@@ -1,4 +1,4 @@
-name: Grass Fixed (No Docker)
+name: Grass Fixed (No Docker) v4
 
 on:
   workflow_dispatch: # Manual Start
@@ -7,15 +7,15 @@ jobs:
   grass-node:
     name: Grass-Worker-1
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 Hours
+    timeout-minutes: 360 # 6 Hours Max
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v4 # Updated to v4
 
     # 1. SETUP NODE.JS
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4 # Updated to v4
       with:
         node-version: 18
 
@@ -34,19 +34,25 @@ jobs:
 
         (async () => {
           console.log("Launching Browser...");
+          // Browser launch options
           const browser = await puppeteer.launch({
             headless: "new",
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--ignore-certificate-errors']
           });
           
           const page = await browser.newPage();
           
           // 1. Go to Login
           console.log("Going to Grass Login...");
-          await page.goto('https://app.getgrass.io/login', {waitUntil: 'networkidle2', timeout: 60000});
+          try {
+            await page.goto('https://app.getgrass.io/login', {waitUntil: 'networkidle2', timeout: 60000});
+          } catch (e) {
+            console.log("Page load error (might be okay): " + e);
+          }
           
           // 2. Type Credentials
           console.log("Typing Credentials...");
+          await page.waitForSelector('input[name="user"]', {timeout: 10000}).catch(() => console.log("Input not found"));
           await page.type('input[name="user"]', process.env.GRASS_USER);
           await page.type('input[name="password"]', process.env.GRASS_PASS);
           
@@ -55,19 +61,15 @@ jobs:
           await page.click('button[type="submit"]');
           
           // 4. Wait for Dashboard
-          try {
-            await page.waitForNavigation({timeout: 30000});
-            console.log("Login Success! Connected to Grass Network.");
-          } catch (error) {
-            console.log("Navigation timeout, but assuming login might be successful or verifying...");
-          }
+          console.log("Waiting for dashboard...");
+          await new Promise(r => setTimeout(r, 10000)); // Wait 10 seconds
 
           // 5. Take Screenshot (Evidence)
+          console.log("Taking Screenshot...");
           await page.screenshot({path: 'grass_status.png'});
-          console.log("Screenshot saved. Keeping session alive...");
+          console.log("Screenshot saved. Keeping session alive for 6 Hours...");
 
           // 6. Keep Alive Loop (6 Hours)
-          // Hum browser band nahi karenge
           await new Promise(r => setTimeout(r, 21000000));
           
           await browser.close();
@@ -81,10 +83,10 @@ jobs:
         GRASS_PASS: ${{ secrets.GRASS_PASS }}
       run: node grass_bot.js
 
-    # 5. UPLOAD SCREENSHOT (Agar dekhna ho ke login hua ya nahi)
-    - name: Upload Screenshot
-      if: always()
-      uses: actions/upload-artifact@v3
+    # 5. UPLOAD SCREENSHOT (Fixed v4 Here)
+    - name: Upload Screenshot Evidence
+      if: always() # Hamesha chalega chahe error aye
+      uses: actions/upload-artifact@v4 # YE CHANGE KIYA HAI (v3 -> v4)
       with:
         name: grass-evidence
         path: grass_status.png
