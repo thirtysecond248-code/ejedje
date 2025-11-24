@@ -1,39 +1,90 @@
-name: Grass Single Test
+name: Grass Fixed (No Docker)
 
 on:
-  workflow_dispatch: # Manual Start Button
+  workflow_dispatch: # Manual Start
 
 jobs:
   grass-node:
-    name: Grass-Runner-1
+    name: Grass-Worker-1
     runs-on: ubuntu-latest
-    timeout-minutes: 360 # 6 Hours Max
+    timeout-minutes: 360 # 6 Hours
 
     steps:
-    - name: Checkout Code
+    - name: Checkout
       uses: actions/checkout@v3
 
-    # --- START GRASS MINER (DOCKER) ---
-    - name: Start Grass Node
-      run: |
-        echo "Starting Grass Miner..."
-        # Ye Docker container Grass server se connect karega
-        docker run -d --name grass \
-          -e GRASS_USER="${{ secrets.GRASS_USER }}" \
-          -e GRASS_PASS="${{ secrets.GRASS_PASS }}" \
-          mrcolorrain/grass-miner
+    # 1. SETUP NODE.JS
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 18
 
-    # --- VERIFICATION (LOGS CHECK) ---
-    - name: Check Logs (Wait 30s)
+    # 2. INSTALL BROWSER TOOLS
+    - name: Install Dependencies
       run: |
-        echo "Waiting for connection..."
-        sleep 30
-        # Ye logs dikhayega taake pata chale connect hua ya nahi
-        docker logs grass
+        npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
-    # --- KEEP ALIVE (6 HOURS) ---
-    - name: Keep Alive
+    # 3. CREATE BOT SCRIPT (On the Fly)
+    - name: Create Grass Bot Script
       run: |
-        echo "Grass Node is running. Do not close."
-        # 21500 seconds = 5 Hours 58 Mins
-        sleep 21500
+        cat <<EOF > grass_bot.js
+        const puppeteer = require('puppeteer-extra');
+        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+        puppeteer.use(StealthPlugin());
+
+        (async () => {
+          console.log("Launching Browser...");
+          const browser = await puppeteer.launch({
+            headless: "new",
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
+          
+          const page = await browser.newPage();
+          
+          // 1. Go to Login
+          console.log("Going to Grass Login...");
+          await page.goto('https://app.getgrass.io/login', {waitUntil: 'networkidle2', timeout: 60000});
+          
+          // 2. Type Credentials
+          console.log("Typing Credentials...");
+          await page.type('input[name="user"]', process.env.GRASS_USER);
+          await page.type('input[name="password"]', process.env.GRASS_PASS);
+          
+          // 3. Click Login
+          console.log("Clicking Login...");
+          await page.click('button[type="submit"]');
+          
+          // 4. Wait for Dashboard
+          try {
+            await page.waitForNavigation({timeout: 30000});
+            console.log("Login Success! Connected to Grass Network.");
+          } catch (error) {
+            console.log("Navigation timeout, but assuming login might be successful or verifying...");
+          }
+
+          // 5. Take Screenshot (Evidence)
+          await page.screenshot({path: 'grass_status.png'});
+          console.log("Screenshot saved. Keeping session alive...");
+
+          // 6. Keep Alive Loop (6 Hours)
+          // Hum browser band nahi karenge
+          await new Promise(r => setTimeout(r, 21000000));
+          
+          await browser.close();
+        })();
+        EOF
+
+    # 4. RUN THE BOT
+    - name: Run Grass
+      env:
+        GRASS_USER: ${{ secrets.GRASS_USER }}
+        GRASS_PASS: ${{ secrets.GRASS_PASS }}
+      run: node grass_bot.js
+
+    # 5. UPLOAD SCREENSHOT (Agar dekhna ho ke login hua ya nahi)
+    - name: Upload Screenshot
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: grass-evidence
+        path: grass_status.png
